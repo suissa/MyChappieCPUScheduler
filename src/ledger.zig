@@ -44,44 +44,44 @@ pub const ExecutionLedger = struct {
     }
 
     pub fn lease(self: *ExecutionLedger, shard_id: u16, worker_id: u64, now_ns: u64, lease_ns: u64) LedgerError!void {
-        const shard = try self.get(shard_id);
-        if (shard.state != .queued and shard.state != .retry_wait) return error.InvalidState;
-        shard.state = .leased;
-        shard.attempt += 1;
-        shard.primary_worker = worker_id;
-        shard.secondary_worker = null;
-        shard.lease_deadline_ns = now_ns + lease_ns;
+        const record = try self.get(shard_id);
+        if (record.state != .queued and record.state != .retry_wait) return error.InvalidState;
+        record.state = .leased;
+        record.attempt += 1;
+        record.primary_worker = worker_id;
+        record.secondary_worker = null;
+        record.lease_deadline_ns = now_ns + lease_ns;
     }
 
     pub fn speculate(self: *ExecutionLedger, shard_id: u16, worker_id: u64) LedgerError!void {
-        const shard = try self.get(shard_id);
-        if (shard.state != .leased) return error.InvalidState;
-        if (shard.secondary_worker != null) return error.SecondaryLeaseExists;
-        if (shard.primary_worker == worker_id) return error.SecondaryLeaseExists;
-        shard.secondary_worker = worker_id;
+        const record = try self.get(shard_id);
+        if (record.state != .leased) return error.InvalidState;
+        if (record.secondary_worker != null) return error.SecondaryLeaseExists;
+        if (record.primary_worker == worker_id) return error.SecondaryLeaseExists;
+        record.secondary_worker = worker_id;
     }
 
     pub fn complete(self: *ExecutionLedger, shard_id: u16, worker_id: u64, result_hash: u64) LedgerError!types.CompletionOutcome {
-        const shard = try self.get(shard_id);
-        if (shard.state == .completed) return .duplicate;
-        if (shard.state != .leased) return error.InvalidState;
-        if (shard.primary_worker != worker_id and shard.secondary_worker != worker_id) return .stale_worker;
+        const record = try self.get(shard_id);
+        if (record.state == .completed) return .duplicate;
+        if (record.state != .leased) return error.InvalidState;
+        if (record.primary_worker != worker_id and record.secondary_worker != worker_id) return .stale_worker;
 
-        shard.state = .completed;
-        shard.result_hash = result_hash;
-        shard.primary_worker = null;
-        shard.secondary_worker = null;
+        record.state = .completed;
+        record.result_hash = result_hash;
+        record.primary_worker = null;
+        record.secondary_worker = null;
         self.completed_count += 1;
         if (self.completed_count == self.shard_count) self.state = .completed;
         return .accepted;
     }
 
     pub fn expireShard(self: *ExecutionLedger, shard_id: u16, now_ns: u64) LedgerError!bool {
-        const shard = try self.get(shard_id);
-        if (shard.state != .leased or shard.lease_deadline_ns > now_ns) return false;
-        shard.state = .retry_wait;
-        shard.primary_worker = null;
-        shard.secondary_worker = null;
+        const record = try self.get(shard_id);
+        if (record.state != .leased or record.lease_deadline_ns > now_ns) return false;
+        record.state = .retry_wait;
+        record.primary_worker = null;
+        record.secondary_worker = null;
         return true;
     }
 
