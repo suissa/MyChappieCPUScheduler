@@ -10,14 +10,17 @@ pub fn main() !void {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
-    if (args.len != 3) return error.ExpectedUnknownAndKnownModulePaths;
+    var args = try std.process.argsWithAllocator(allocator);
+    defer args.deinit();
+    _ = args.next() orelse return error.ExpectedProgramName;
+    const unknown_module_path = args.next() orelse return error.ExpectedUnknownModulePath;
+    const known_module_path = args.next() orelse return error.ExpectedKnownModulePath;
+    if (args.next() != null) return error.TooManyArguments;
 
     var registry: registry_mod.DynamicActionRegistry = .{};
     defer registry.deinit();
-    try registry.load(args[1]);
-    try registry.load(args[2]);
+    try registry.load(unknown_module_path);
+    try registry.load(known_module_path);
 
     const unknown = try registry.find("Crypto.IteratedSha256.Unknown");
     const known = try registry.find("Crypto.IteratedSha256.Known");
