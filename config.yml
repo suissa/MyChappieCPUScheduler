@@ -1,0 +1,43 @@
+scheduler:
+  threshold:
+    strategy: percentile
+    percentile: 90
+  overload_cpu_percent: 85
+  max_shards: 16
+
+unknown_mode:
+  initial_execution: local_probe
+  offload_after_threshold_requires:
+    - offloadable
+    - retry_safe
+    - checkpointable
+  non_checkpointable_policy: finish_local_and_learn
+
+known_mode:
+  pre_execution_decision: true
+  split_requires:
+    - offloadable
+    - retry_safe
+    - partitionable
+    - aggregation
+
+sidecar:
+  max_shards: 64
+  max_outbox_events: 128
+  lease_timeout_ms: 5000
+  retry:
+    enabled: true
+    max_attempts: 5
+  speculation:
+    enabled: true
+    policy: explicit_straggler_signal
+  completion:
+    shard_policy: first_valid_result_wins
+    scheduler_notification: ack_only
+
+persistence:
+  core: adapter
+  required_state:
+    - execution-ledger
+    - outbox
+  reference_core_is_in_memory: true

@@ -1,0 +1,68 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://mychappie.digital/schemas/cpu-scheduler.schema.json
+title: MyChappieCPUScheduler Contract
+type: object
+
+$defs:
+  CostKnowledge:
+    type: string
+    enum: [unknown, known]
+
+  AggregationStrategy:
+    type: string
+    enum: [none, concatenate, sum, custom]
+
+  FunctionCostProfile:
+    type: object
+    additionalProperties: false
+    required: [function_id, knowledge, offloadable, partitionable, checkpointable, retry_safe, aggregation]
+    properties:
+      function_id: { type: string, minLength: 1 }
+      knowledge: { $ref: '#/$defs/CostKnowledge' }
+      estimated_cycles: { type: integer, minimum: 0 }
+      offloadable: { type: boolean }
+      partitionable: { type: boolean }
+      checkpointable: { type: boolean }
+      retry_safe: { type: boolean }
+      aggregation: { $ref: '#/$defs/AggregationStrategy' }
+      recommended_shards: { type: integer, minimum: 1, maximum: 64 }
+
+  LocalPressure:
+    type: object
+    additionalProperties: false
+    required: [cpu_percent, runnable_tasks]
+    properties:
+      cpu_percent: { type: integer, minimum: 0, maximum: 100 }
+      runnable_tasks: { type: integer, minimum: 0 }
+
+  ScheduleDecision:
+    type: object
+    additionalProperties: false
+    required: [kind, reason, requested_shards, predicted_cycles]
+    properties:
+      kind:
+        type: string
+        enum: [local, probe_local, offload, split_offload]
+      reason:
+        type: string
+        enum: [below_threshold, unknown_cost, local_pressure, known_heavy_cost, not_offloadable, not_retry_safe]
+      requested_shards: { type: integer, minimum: 1, maximum: 64 }
+      predicted_cycles: { type: integer, minimum: 0 }
+
+  ShardRecord:
+    type: object
+    additionalProperties: false
+    required: [shard_id, state, attempt]
+    properties:
+      shard_id: { type: integer, minimum: 0, maximum: 63 }
+      state: { type: string, enum: [queued, leased, retry_wait, completed] }
+      attempt: { type: integer, minimum: 0 }
+      primary_worker: { type: [integer, 'null'] }
+      secondary_worker: { type: [integer, 'null'] }
+      lease_deadline_ns: { type: integer, minimum: 0 }
+      result_hash: { type: [integer, 'null'] }
+
+properties:
+  function_profile: { $ref: '#/$defs/FunctionCostProfile' }
+  local_pressure: { $ref: '#/$defs/LocalPressure' }
+  decision: { $ref: '#/$defs/ScheduleDecision' }

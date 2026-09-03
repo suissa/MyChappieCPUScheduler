@@ -1,0 +1,142 @@
+# MyChappieCPUScheduler / PGDDE
+# Topology is intentionally split by decision because [] means parallelism,
+# not an exclusive branch.
+
+flow KnownLocalExecution
+
+KnownFunction.Requested
+  :--: BenchmarkProfile.Resolve
+  :--: CPUScheduler.Evaluate
+  :--: LocalExecution.Execute
+  :--: LocalExecution.Completed
+
+flow KnownDistributedExecution
+
+KnownFunction.Requested
+  :--: BenchmarkProfile.Resolve
+  :--: CPUScheduler.Evaluate
+  :--: DistributedSidecar.Submit
+  :--: DistributedSidecar.PlanShards
+  :--: WorkerShard.Execute
+  :--: DistributedSidecar.Gather
+  :--: DistributedExecution.Completed
+  :--: CPUScheduler.AcknowledgeCompletion
+
+flow UnknownExecution
+
+UnknownFunction.Requested
+  :--: CPUScheduler.Evaluate
+  :--: LocalProbe.Execute
+  :--: CPUScheduler.ObserveUnknown
+  :--: BenchmarkProfile.Learn
+
+# If the UNKNOWN function crosses the threshold and is checkpointable/offloadable,
+# remaining work is handed to the sidecar. Otherwise the current execution stays
+# local and only future executions become KNOWN.
+
+flow UnknownCheckpointedOffload
+
+Threshold.Crossed
+  :--: Checkpoint.Capture
+  :--: DistributedSidecar.SubmitRemaining
+  :--: WorkerShard.Execute
+  :--: DistributedSidecar.Gather
+  :--: DistributedExecution.Completed
+  :--: CPUScheduler.AcknowledgeCompletion
+
+flow DurableDistributedExecution
+
+DistributedSidecar.PlanShards
+  :--: DistributedSidecar.LeaseShard
+  :--: WorkerShard.Execute
+  :--: DistributedSidecar.CompleteShard
+  :--: DistributedSidecar.Gather
+
+WorkerShard.Execute !-> DistributedSidecar.RetryShard
+DistributedSidecar.RetryShard
+  :--: DistributedSidecar.LeaseShard
+  :--: WorkerShard.Execute
+
+Straggler.Detected
+  :--: DistributedSidecar.Speculate
+  :--: WorkerShard.Execute
+
+# -----------------------------------------------------------------------------
+# Execution 2flow
+# -----------------------------------------------------------------------------
+
+execution CPUScheduler.Evaluate
+  -> FunctionExecutionRequested
+  ->> EvaluateLocalCompute
+  <<- EvaluateLocalCompute
+  <- Ok<LocalExecutionSelected>
+  <- Ok<LocalProbeSelected>
+  <- Ok<OffloadSelected>
+  <- Ok<SplitOffloadSelected>
+  <- Error<SchedulingFailure>
+
+execution CPUScheduler.ObserveUnknown
+  -> LocalProbeProgress
+  ->> ObserveCycleThreshold
+  <<- ObserveCycleThreshold
+  <- Ok<ContinueLocal>
+  <- Ok<RequestSidecar>
+  <- Ok<FinishLocalAndLearn>
+  <- Error<ProbeObservationFailure>
+
+execution DistributedSidecar.Submit
+  -> Ok<OffloadSelected>
+  ->> CreateExecutionLedger
+  <<- CreateExecutionLedger
+  ->> CreateShardPlan
+  <<- CreateShardPlan
+  <- Ok<DistributedExecutionAccepted>
+  <- Error<DistributedSubmissionFailure>
+
+execution DistributedSidecar.LeaseShard
+  -> ShardReady
+  ->> AcquireWorkerLease
+  <<- AcquireWorkerLease
+  <- Ok<ShardLeased>
+  <- Error<WorkerLeaseFailure>
+
+execution DistributedSidecar.RetryShard
+  -> Error<WorkerLeaseExpired>
+  ->> MarkRetryWait
+  <<- MarkRetryWait
+  ->> SelectAnotherWorker
+  <<- SelectAnotherWorker
+  <- Ok<ShardReady>
+  <- Error<ShardRetryFailure>
+
+execution DistributedSidecar.Speculate
+  -> StragglerDetected
+  ->> AddSecondaryWorkerLease
+  <<- AddSecondaryWorkerLease
+  <- Ok<SpeculativeShardLeased>
+  <- Error<SpeculationFailure>
+
+execution DistributedSidecar.CompleteShard
+  -> PartialResultReceived
+  ->> ValidateShardAttempt
+  <<- ValidateShardAttempt
+  ->> CommitFirstValidResult
+  <<- CommitFirstValidResult
+  <- Ok<ShardCompleted>
+  <- Ok<DuplicateShardResultIgnored>
+  <- Error<StaleWorkerResult>
+
+execution DistributedSidecar.Gather
+  -> Ok<ShardCompleted>
+  ->> CheckExecutionClosure
+  <<- CheckExecutionClosure
+  <- Ok<DistributedExecutionCompleted>
+  <- Ok<AwaitRemainingShards>
+  <- Error<GatherFailure>
+
+execution CPUScheduler.AcknowledgeCompletion
+  -> Ok<DistributedExecutionCompleted>
+  ->> RecordLocalCompletionAck
+  <<- RecordLocalCompletionAck
+  <- Ok<CompletionAcknowledged>
+  <- Error<CompletionAckFailure>
