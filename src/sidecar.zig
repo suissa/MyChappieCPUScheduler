@@ -83,24 +83,17 @@ pub const DistributedSidecar = struct {
 
     pub fn expireAndRequestRetries(self: *DistributedSidecar, now_ns: u64) SidecarError!u16 {
         var expired: u16 = 0;
-        var i: u16 = 0;
-        while (i < self.ledger.shard_count) : (i += 1) {
-            const before = (try self.ledger.shard(i)).state;
-            if (before != .leased) continue;
-            const deadline = (try self.ledger.shard(i)).lease_deadline_ns;
-            if (deadline > now_ns) continue;
-
-            _ = self.ledger.expireLeases(now_ns);
-            if ((try self.ledger.shard(i)).state == .retry_wait) {
-                expired += 1;
-                _ = try self.outbox.append(.{
-                    .sequence = 0,
-                    .kind = .shard_retry_requested,
-                    .execution_id = self.ledger.execution_id,
-                    .shard_id = i,
-                    .attempt = (try self.ledger.shard(i)).attempt,
-                });
-            }
+        var shard_id: u16 = 0;
+        while (shard_id < self.ledger.shard_count) : (shard_id += 1) {
+            if (!try self.ledger.expireShard(shard_id, now_ns)) continue;
+            expired += 1;
+            _ = try self.outbox.append(.{
+                .sequence = 0,
+                .kind = .shard_retry_requested,
+                .execution_id = self.ledger.execution_id,
+                .shard_id = shard_id,
+                .attempt = (try self.ledger.shard(shard_id)).attempt,
+            });
         }
         return expired;
     }
@@ -118,4 +111,15 @@ test "sidecar retries a missing worker and gathers completion" {
     const ack = try sidecar.completeShard(1, 30, 222);
     try std.testing.expect(ack.execution_completed);
     try std.testing.expect(sidecar.outbox.pendingCount() >= 6);
+}
+
+test "sidecar emits one retry event per expired shard" {
+    var sidecar = try DistributedSidecar.init(88, 2);
+    try sidecar.leaseShard(0, 10, 0, 100);
+    try sidecar.leaseShard(1, 20, 0, 100);
+
+    try std.testing.expectEqual(@as(u16, 2), try sidecar.expireAndRequestRetries(101));
+    try std.testing.expectEqual(@as(usize, 5), sidecar.outbox.pendingCount());
+    try std.testing.expectEqual(outbox_mod.EventKind.shard_retry_requested, sidecar.outbox.events[3].kind);
+    try std.testing.expectEqual(outbox_mod.EventKind.shard_retry_requested, sidecar.outbox.events[4].kind);
 }
