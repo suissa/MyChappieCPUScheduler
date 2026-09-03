@@ -1,0 +1,7 @@
+rounds: 2000
+default_shards: 4
+measurement:
+  initial_mode: local_probe
+  learn_cost_after_execution: true
+threshold_transition:
+  on_exceeded: request_sidecar_when_checkpointable
