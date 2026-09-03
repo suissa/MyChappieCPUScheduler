@@ -1,46 +1,53 @@
 # MyChappieCPUScheduler / PGDDE
-# Topology is intentionally split by decision because [] means parallelism,
-# not an exclusive branch.
+# Atomic Actions are dynamic modules resolved by semantic_id. The scheduler never
+# imports them and never knows module paths or remote worker topology.
 
 flow KnownLocalExecution
 
-KnownFunction.Requested
+KnownAction.Requested
+  :--: DynamicActionRegistry.Resolve
   :--: BenchmarkProfile.Resolve
   :--: CPUScheduler.Evaluate
-  :--: LocalExecution.Execute
+  :--: DynamicAction.Execute
   :--: LocalExecution.Completed
 
 flow KnownDistributedExecution
 
-KnownFunction.Requested
+KnownAction.Requested
+  :--: DynamicActionRegistry.Resolve
   :--: BenchmarkProfile.Resolve
   :--: CPUScheduler.Evaluate
   :--: DistributedSidecar.Submit
   :--: DistributedSidecar.PlanShards
+  :--: WorkerActionRuntime.Resolve
   :--: WorkerShard.Execute
   :--: DistributedSidecar.Gather
+  :--: DynamicAction.Aggregate
   :--: DistributedExecution.Completed
   :--: CPUScheduler.AcknowledgeCompletion
 
 flow UnknownExecution
 
-UnknownFunction.Requested
+UnknownAction.Requested
+  :--: DynamicActionRegistry.Resolve
   :--: CPUScheduler.Evaluate
-  :--: LocalProbe.Execute
+  :--: LinuxMeasurement.Begin
+  :--: DynamicAction.Execute
+  :--: LinuxMeasurement.Finish
   :--: CPUScheduler.ObserveUnknown
   :--: BenchmarkProfile.Learn
 
-# If the UNKNOWN function crosses the threshold and is checkpointable/offloadable,
-# remaining work is handed to the sidecar. Otherwise the current execution stays
-# local and only future executions become KNOWN.
-
+# UNKNOWN can hand future or checkpointed work to the sidecar only after the
+# measured execution proves cost and the Action contract proves offload safety.
 flow UnknownCheckpointedOffload
 
 Threshold.Crossed
   :--: Checkpoint.Capture
   :--: DistributedSidecar.SubmitRemaining
+  :--: WorkerActionRuntime.Resolve
   :--: WorkerShard.Execute
   :--: DistributedSidecar.Gather
+  :--: DynamicAction.Aggregate
   :--: DistributedExecution.Completed
   :--: CPUScheduler.AcknowledgeCompletion
 
@@ -48,6 +55,7 @@ flow DurableDistributedExecution
 
 DistributedSidecar.PlanShards
   :--: DistributedSidecar.LeaseShard
+  :--: WorkerActionRuntime.Resolve
   :--: WorkerShard.Execute
   :--: DistributedSidecar.CompleteShard
   :--: DistributedSidecar.Gather
@@ -55,18 +63,29 @@ DistributedSidecar.PlanShards
 WorkerShard.Execute !-> DistributedSidecar.RetryShard
 DistributedSidecar.RetryShard
   :--: DistributedSidecar.LeaseShard
+  :--: WorkerActionRuntime.Resolve
   :--: WorkerShard.Execute
 
 Straggler.Detected
   :--: DistributedSidecar.Speculate
+  :--: WorkerActionRuntime.Resolve
   :--: WorkerShard.Execute
 
 # -----------------------------------------------------------------------------
 # Execution 2flow
 # -----------------------------------------------------------------------------
 
+execution DynamicActionRegistry.Resolve
+  -> ActionExecutionRequested
+  ->> ResolveBySemanticId
+  <<- ResolveBySemanticId
+  ->> ValidateAllasActionAbiV1
+  <<- ValidateAllasActionAbiV1
+  <- Ok<ActionResolved>
+  <- Error<ActionResolutionFailure>
+
 execution CPUScheduler.Evaluate
-  -> FunctionExecutionRequested
+  -> Ok<ActionResolved>
   ->> EvaluateLocalCompute
   <<- EvaluateLocalCompute
   <- Ok<LocalExecutionSelected>
@@ -75,14 +94,64 @@ execution CPUScheduler.Evaluate
   <- Ok<SplitOffloadSelected>
   <- Error<SchedulingFailure>
 
+execution LinuxMeasurement.Begin
+  -> Ok<LocalProbeSelected>
+  ->> OpenPerfEventCounters
+  <<- OpenPerfEventCounters
+  ->> SnapshotCgroupV2
+  <<- SnapshotCgroupV2
+  <- Ok<MeasurementStarted>
+  <- Error<MeasurementUnavailable>
+
+execution DynamicAction.Execute
+  -> Ok<ActionResolved>
+  ->> InvokeDynamicActionAbi
+  <<- InvokeDynamicActionAbi
+  <- Ok<ActionResult>
+  <- Error<ActionExecutionFailure>
+
+execution LinuxMeasurement.Finish
+  -> Ok<ActionResult>
+  ->> ReadPerfEventDeltas
+  <<- ReadPerfEventDeltas
+  ->> SnapshotCgroupV2
+  <<- SnapshotCgroupV2
+  ->> NormalizeMeasurement
+  <<- NormalizeMeasurement
+  <- Ok<MeasurementObserved>
+  <- Error<MeasurementNormalizationFailure>
+
 execution CPUScheduler.ObserveUnknown
-  -> LocalProbeProgress
+  -> Ok<MeasurementObserved>
   ->> ObserveCycleThreshold
   <<- ObserveCycleThreshold
   <- Ok<ContinueLocal>
   <- Ok<RequestSidecar>
   <- Ok<FinishLocalAndLearn>
   <- Error<ProbeObservationFailure>
+
+execution WorkerActionRuntime.Resolve
+  -> ShardReady
+  ->> LoadModuleBySemanticId
+  <<- LoadModuleBySemanticId
+  ->> VerifyArtifactAndSchemaIdentity
+  <<- VerifyArtifactAndSchemaIdentity
+  <- Ok<WorkerActionResolved>
+  <- Error<WorkerActionResolutionFailure>
+
+execution WorkerShard.Execute
+  -> Ok<WorkerActionResolved>
+  ->> InvokeDynamicActionShardAbi
+  <<- InvokeDynamicActionShardAbi
+  <- Ok<PartialResultReceived>
+  <- Error<WorkerShardExecutionFailure>
+
+execution DynamicAction.Aggregate
+  -> DistributedSidecar.Gathered
+  ->> InvokeDynamicActionAggregateAbi
+  <<- InvokeDynamicActionAggregateAbi
+  <- Ok<AggregatedActionResult>
+  <- Error<ActionAggregationFailure>
 
 execution DistributedSidecar.Submit
   -> Ok<OffloadSelected>
@@ -130,12 +199,12 @@ execution DistributedSidecar.Gather
   -> Ok<ShardCompleted>
   ->> CheckExecutionClosure
   <<- CheckExecutionClosure
-  <- Ok<DistributedExecutionCompleted>
+  <- Ok<DistributedSidecar.Gathered>
   <- Ok<AwaitRemainingShards>
   <- Error<GatherFailure>
 
 execution CPUScheduler.AcknowledgeCompletion
-  -> Ok<DistributedExecutionCompleted>
+  -> Ok<DistributedExecution.Completed>
   ->> RecordLocalCompletionAck
   <<- RecordLocalCompletionAck
   <- Ok<CompletionAcknowledged>
