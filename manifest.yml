@@ -1,0 +1,50 @@
+name: MyChappieCPUScheduler
+semantic_id: Runtime.Compute.MyChappieCPUScheduler
+version: 0.1.0
+language:
+  name: zig
+  version: 0.16.0
+
+purpose: >-
+  Govern local CPU execution using benchmark-derived cost evidence and delegate
+  durable distributed execution to a sidecar without exposing remote topology
+  to the local scheduler.
+
+exports:
+  types:
+    - CostKnowledge
+    - FunctionCostProfile
+    - LocalPressure
+    - ScheduleDecision
+    - ProbeDecision
+    - ExecutionLedger
+    - DistributedSidecar
+  capabilities:
+    - BenchmarkThreshold.P90
+    - ComputeCost.Classify
+    - CPUScheduler.Evaluate
+    - CPUScheduler.ObserveUnknown
+    - DistributedSidecar.Submit
+    - DistributedSidecar.LeaseShard
+    - DistributedSidecar.RetryExpired
+    - DistributedSidecar.Speculate
+    - DistributedSidecar.CompleteShard
+  events:
+    - LocalExecutionSelected
+    - LocalProbeSelected
+    - OffloadSelected
+    - SplitOffloadSelected
+    - ShardLeased
+    - ShardRetryRequested
+    - ShardSpeculated
+    - ShardCompleted
+    - DistributedExecutionCompleted
+
+invariants:
+  - CPUScheduler never selects remote workers.
+  - CPUScheduler never aggregates remote results.
+  - Benchmark cost does not imply distributability.
+  - Split execution requires partitionability, retry safety and aggregation semantics.
+  - UNKNOWN work is not migrated mid-execution unless checkpointable/offloadable.
+  - First valid completion wins for a shard; duplicate completions are idempotent.
+  - Remote retry and speculation are sidecar responsibilities.
