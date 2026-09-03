@@ -25,9 +25,11 @@ jobs:
         with:
           version: 0.16.0
       - name: Format
-        run: zig fmt --check build.zig src/*.zig
+        run: zig fmt --check build.zig src/*.zig actions/*.zig actions/*/*.zig
       - name: Test
         run: zig build test
+      - name: Dynamic Actions + Linux Measurement
+        run: zig build action-test
       - name: ReleaseSafe build
         run: zig build -Doptimize=ReleaseSafe
       - name: Demo
