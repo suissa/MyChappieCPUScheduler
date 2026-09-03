@@ -8,10 +8,12 @@ pub const PmuSnapshot = struct {
     branch_misses: ?u64 = null,
 
     pub fn availableCount(self: PmuSnapshot) u8 {
-        return @intFromBool(self.cycles != null) +
-            @intFromBool(self.instructions != null) +
-            @intFromBool(self.cache_misses != null) +
-            @intFromBool(self.branch_misses != null);
+        var count: u8 = 0;
+        if (self.cycles != null) count += 1;
+        if (self.instructions != null) count += 1;
+        if (self.cache_misses != null) count += 1;
+        if (self.branch_misses != null) count += 1;
+        return count;
     }
 };
 
