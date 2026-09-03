@@ -252,12 +252,7 @@ fn parseCpuStat(data: []const u8, snapshot: *CgroupSnapshot) void {
         const key = fields.next() orelse continue;
         const value_text = fields.next() orelse continue;
         const value = std.fmt.parseInt(u64, value_text, 10) catch continue;
-        if (std.mem.eql(u8, key, "usage_usec")) snapshot.cpu_usage_usec = value
-        else if (std.mem.eql(u8, key, "user_usec")) snapshot.cpu_user_usec = value
-        else if (std.mem.eql(u8, key, "system_usec")) snapshot.cpu_system_usec = value
-        else if (std.mem.eql(u8, key, "nr_periods")) snapshot.nr_periods = value
-        else if (std.mem.eql(u8, key, "nr_throttled")) snapshot.nr_throttled = value
-        else if (std.mem.eql(u8, key, "throttled_usec")) snapshot.throttled_usec = value;
+        if (std.mem.eql(u8, key, "usage_usec")) snapshot.cpu_usage_usec = value else if (std.mem.eql(u8, key, "user_usec")) snapshot.cpu_user_usec = value else if (std.mem.eql(u8, key, "system_usec")) snapshot.cpu_system_usec = value else if (std.mem.eql(u8, key, "nr_periods")) snapshot.nr_periods = value else if (std.mem.eql(u8, key, "nr_throttled")) snapshot.nr_throttled = value else if (std.mem.eql(u8, key, "throttled_usec")) snapshot.throttled_usec = value;
     }
 }
 
@@ -268,8 +263,7 @@ fn parseMemoryEvents(data: []const u8, snapshot: *CgroupSnapshot) void {
         const key = fields.next() orelse continue;
         const value_text = fields.next() orelse continue;
         const value = std.fmt.parseInt(u64, value_text, 10) catch continue;
-        if (std.mem.eql(u8, key, "oom")) snapshot.memory_oom = value
-        else if (std.mem.eql(u8, key, "oom_kill")) snapshot.memory_oom_kill = value;
+        if (std.mem.eql(u8, key, "oom")) snapshot.memory_oom = value else if (std.mem.eql(u8, key, "oom_kill")) snapshot.memory_oom_kill = value;
     }
 }
 
