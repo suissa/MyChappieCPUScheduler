@@ -25,9 +25,7 @@ jobs:
         with:
           version: 0.16.0
       - name: Format
-        run: |
-          zig fmt build.zig src/*.zig actions/*.zig actions/*/*.zig
-          git diff --exit-code
+        run: zig fmt --check build.zig src/*.zig actions/*.zig actions/*/*.zig
       - name: Test
         run: zig build test
       - name: Dynamic Actions + Linux Measurement
