@@ -7,15 +7,17 @@ pub fn main() !void {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
-    if (args.len != 6) return error.ExpectedModuleSemanticIdInputShardCountPrefix;
+    var args = try std.process.argsWithAllocator(allocator);
+    defer args.deinit();
+    _ = args.next() orelse return error.ExpectedProgramName;
+    const module_path = args.next() orelse return error.ExpectedModulePath;
+    const semantic_id = args.next() orelse return error.ExpectedSemanticId;
+    const input_path = args.next() orelse return error.ExpectedInputPath;
+    const shard_count_text = args.next() orelse return error.ExpectedShardCount;
+    const prefix = args.next() orelse return error.ExpectedPrefix;
+    if (args.next() != null) return error.TooManyArguments;
 
-    const module_path = args[1];
-    const semantic_id = args[2];
-    const input_path = args[3];
-    const shard_count = try std.fmt.parseInt(u16, args[4], 10);
-    const prefix = args[5];
+    const shard_count = try std.fmt.parseInt(u16, shard_count_text, 10);
     if (shard_count == 0 or shard_count > 16) return error.InvalidShardCount;
 
     var registry: registry_mod.DynamicActionRegistry = .{};
