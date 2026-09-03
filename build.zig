@@ -71,6 +71,26 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(known_lib);
 
+    const worker = b.addExecutable(.{
+        .name = "action-worker",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/action_worker.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    b.installArtifact(worker);
+
+    const verifier = b.addExecutable(.{
+        .name = "distributed-verifier",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/distributed_verify.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    b.installArtifact(verifier);
+
     const action_demo = b.addExecutable(.{
         .name = "dynamic-action-demo",
         .root_module = b.createModule(.{
