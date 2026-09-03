@@ -30,6 +30,8 @@ jobs:
         run: zig build test
       - name: Dynamic Actions + Linux Measurement
         run: zig build action-test
+      - name: Docker distributed UNKNOWN + KNOWN
+        run: bash scripts/docker-distribution-test.sh
       - name: ReleaseSafe build
         run: zig build -Doptimize=ReleaseSafe
       - name: Demo
