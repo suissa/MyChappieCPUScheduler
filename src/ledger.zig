@@ -76,17 +76,20 @@ pub const ExecutionLedger = struct {
         return .accepted;
     }
 
+    pub fn expireShard(self: *ExecutionLedger, shard_id: u16, now_ns: u64) LedgerError!bool {
+        const shard = try self.get(shard_id);
+        if (shard.state != .leased or shard.lease_deadline_ns > now_ns) return false;
+        shard.state = .retry_wait;
+        shard.primary_worker = null;
+        shard.secondary_worker = null;
+        return true;
+    }
+
     pub fn expireLeases(self: *ExecutionLedger, now_ns: u64) u16 {
         var expired: u16 = 0;
-        var i: usize = 0;
+        var i: u16 = 0;
         while (i < self.shard_count) : (i += 1) {
-            const shard = &self.shards[i];
-            if (shard.state == .leased and shard.lease_deadline_ns <= now_ns) {
-                shard.state = .retry_wait;
-                shard.primary_worker = null;
-                shard.secondary_worker = null;
-                expired += 1;
-            }
+            if (self.expireShard(i, now_ns) catch false) expired += 1;
         }
         return expired;
     }
@@ -113,6 +116,15 @@ test "expired lease becomes retryable" {
     try std.testing.expectEqual(types.ShardState.retry_wait, (try ledger.shard(0)).state);
     try ledger.lease(0, 11, 152, 50);
     try std.testing.expectEqual(@as(u16, 2), (try ledger.shard(0)).attempt);
+}
+
+test "multiple leases expire independently in the same tick" {
+    var ledger = try ExecutionLedger.init(99, 2);
+    try ledger.lease(0, 10, 0, 100);
+    try ledger.lease(1, 20, 0, 100);
+    try std.testing.expectEqual(@as(u16, 2), ledger.expireLeases(101));
+    try std.testing.expectEqual(types.ShardState.retry_wait, (try ledger.shard(0)).state);
+    try std.testing.expectEqual(types.ShardState.retry_wait, (try ledger.shard(1)).state);
 }
 
 test "speculative workers use first-valid-result-wins semantics" {
