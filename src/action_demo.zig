@@ -5,13 +5,8 @@ const types = @import("types.zig");
 const measurement = @import("measurement.zig");
 const abi = @import("action_abi.zig");
 
-pub fn main() !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
-
-    var args = try std.process.argsWithAllocator(allocator);
-    defer args.deinit();
+pub fn main(init: std.process.Init) !void {
+    var args = init.minimal.args.iterate();
     _ = args.next() orelse return error.ExpectedProgramName;
     const unknown_module_path = args.next() orelse return error.ExpectedUnknownModulePath;
     const known_module_path = args.next() orelse return error.ExpectedKnownModulePath;
