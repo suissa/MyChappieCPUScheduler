@@ -1,0 +1,7 @@
+rounds: 4000
+default_shards: 4
+benchmark:
+  knowledge: known
+  estimated_cycles: 4000000
+scheduling:
+  pre_execution_offload: true

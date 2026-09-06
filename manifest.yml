@@ -1,14 +1,15 @@
 name: MyChappieCPUScheduler
 semantic_id: Runtime.Compute.MyChappieCPUScheduler
-version: 0.1.0
+version: 0.2.0
 language:
   name: zig
   version: 0.16.0
 
 purpose: >-
-  Govern local CPU execution using benchmark-derived cost evidence and delegate
-  durable distributed execution to a sidecar without exposing remote topology
-  to the local scheduler.
+  Govern local CPU execution using benchmark-derived cost evidence, discover
+  atomic Actions dynamically by semantic_id, observe Linux execution cost, and
+  delegate durable distributed execution to a sidecar without exposing remote
+  topology to the local scheduler.
 
 exports:
   types:
@@ -19,17 +20,32 @@ exports:
     - ProbeDecision
     - ExecutionLedger
     - DistributedSidecar
+    - ActionDescriptor
+    - DynamicActionRegistry
+    - MeasurementSnapshot
+    - LinuxMeasurementPlane
   capabilities:
     - BenchmarkThreshold.P90
     - ComputeCost.Classify
     - CPUScheduler.Evaluate
     - CPUScheduler.ObserveUnknown
+    - DynamicActionRegistry.Load
+    - DynamicActionRegistry.Resolve
+    - DynamicAction.Execute
+    - DynamicAction.ExecuteShard
+    - DynamicAction.Aggregate
+    - LinuxMeasurement.PMU
+    - LinuxMeasurement.CgroupV2
     - DistributedSidecar.Submit
     - DistributedSidecar.LeaseShard
     - DistributedSidecar.RetryExpired
     - DistributedSidecar.Speculate
     - DistributedSidecar.CompleteShard
   events:
+    - ActionModuleLoaded
+    - ActionResolved
+    - MeasurementObserved
+    - CostProfileLearned
     - LocalExecutionSelected
     - LocalProbeSelected
     - OffloadSelected
@@ -41,8 +57,12 @@ exports:
     - DistributedExecutionCompleted
 
 invariants:
-  - CPUScheduler never selects remote workers.
+  - Atomic Actions are never imported into the runtime; they are dynamic ABI modules.
+  - Dynamic modules are resolved by semantic_id and must declare Allas Action ABI v1.
+  - CPUScheduler never opens Action modules and never selects remote workers.
   - CPUScheduler never aggregates remote results.
+  - LinuxMeasurementPlane observes execution but does not own scheduling policy.
+  - PMU permission failure degrades measurement quality instead of failing Action execution.
   - Benchmark cost does not imply distributability.
   - Split execution requires partitionability, retry safety and aggregation semantics.
   - UNKNOWN work is not migrated mid-execution unless checkpointable/offloadable.

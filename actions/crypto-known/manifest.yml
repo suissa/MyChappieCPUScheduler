@@ -1,0 +1,22 @@
+name: IteratedSha256Known
+semantic_id: Crypto.IteratedSha256.Known
+version: 0.1.0
+runtime:
+  abi: allas-action-v1
+  linkage: dynamic
+  implementation: ./action.zig
+compute:
+  knowledge: known
+  estimated_cycles: 4000000
+  offloadable: true
+  partitionable: true
+  checkpointable: true
+  retry_safe: true
+  aggregation: custom
+distribution:
+  default_shards: 4
+  partition_strategy: contiguous_byte_ranges
+  aggregate_strategy: sha256_of_ordered_partial_digests
+result:
+  bytes: 32
+  deterministic: true

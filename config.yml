@@ -5,8 +5,40 @@ scheduler:
   overload_cpu_percent: 85
   max_shards: 16
 
+action_runtime:
+  abi: allas-action-v1
+  discovery: semantic_id
+  linkage: dynamic
+  runtime_imports_atomic_actions: false
+  module_directory: ./zig-out/lib
+  require:
+    - abi_version
+    - semantic_id
+    - schema_hash
+    - artifact_hash
+
+measurement:
+  provider: linux
+  cgroup_v2_root: /sys/fs/cgroup
+  pmu:
+    provider: perf_event_open
+    counters:
+      - cpu_cycles
+      - instructions
+      - cache_misses
+      - branch_misses
+    permission_failure: degrade_to_partial
+  cgroup:
+    cpu_stat: true
+    memory_current: true
+    memory_peak: true
+    memory_events: true
+    cpu_pressure: true
+    memory_pressure: true
+
 unknown_mode:
   initial_execution: local_probe
+  measurement: required
   offload_after_threshold_requires:
     - offloadable
     - retry_safe
@@ -34,6 +66,12 @@ sidecar:
   completion:
     shard_policy: first_valid_result_wins
     scheduler_notification: ack_only
+
+validation:
+  docker:
+    workers: 4
+    unknown_mode: local_probe_plus_remote_shards
+    known_mode: direct_remote_split
 
 persistence:
   core: adapter

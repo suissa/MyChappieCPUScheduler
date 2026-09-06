@@ -1,0 +1,16 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: allas://actions/Crypto.IteratedSha256.Unknown
+$title: Crypto.IteratedSha256.Unknown
+x-allas-binary-contract:
+  input:
+    type: bytes
+    max_bytes: 65536
+  output:
+    type: bytes
+    exact_bytes: 32
+  shard_output:
+    type: bytes
+    exact_bytes: 32
+  aggregation:
+    ordered: true
+    function: sha256

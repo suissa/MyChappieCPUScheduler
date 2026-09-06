@@ -1,0 +1,8 @@
+services:
+  worker:
+    image: ubuntu:24.04
+    working_dir: /work
+    volumes:
+      - ./zig-out:/app:ro
+      - ./.dist-test:/work
+    command: ["/bin/true"]
